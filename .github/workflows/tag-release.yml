@@ -1,0 +1,37 @@
+name: Tag release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.pull_request.merged &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tag merge commit and create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          version="${HEAD_REF#release/}"
+          tag="v$version"
+          prerelease=()
+          case $version in *-*) prerelease=(--prerelease) ;; esac
+
+          # Tag first, so a rejected tag fails here instead of leaving a draft.
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" -f sha="$MERGE_SHA" > /dev/null
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "libthespeon $version" --generate-notes "${prerelease[@]}"
+
+          draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)
+          [ "$draft" = false ] || { echo "Release $tag was left as a draft"; exit 1; }
