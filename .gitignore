@@ -1,0 +1,5 @@
+build/
+*.wav
+build-profile/
+*.tracy
+build-coverage/
