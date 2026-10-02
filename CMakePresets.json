@@ -1,0 +1,66 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 24, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "profile",
+      "displayName": "Profile (Tracy)",
+      "binaryDir": "${sourceDir}/build-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "THESPEON_PROFILER": "tracy"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "THESPEON_COVERAGE": "ON"
+      },
+      "condition": {
+        "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows"
+      }
+    },
+    {
+      "name": "coverage-windows",
+      "displayName": "Coverage (clang-cl)",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "toolset": { "value": "ClangCL", "strategy": "set" },
+      "cacheVariables": { "THESPEON_COVERAGE": "ON" },
+      "condition": {
+        "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "profile", "configurePreset": "profile" },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "targets": ["coverage"]
+    },
+    {
+      "name": "coverage-windows",
+      "configurePreset": "coverage-windows",
+      "configuration": "Debug",
+      "targets": ["coverage"]
+    }
+  ]
+}
