@@ -357,6 +357,12 @@ std::filesystem::path LanguageConfig::MetagraphPath(
       .Resolve(binaries);
 }
 
+std::filesystem::path LanguageConfig::TextPreprocessingPath(
+    const std::filesystem::path& binaries) const {
+  return RequireFile(files, "textpreprocessing", "Language module " + name)
+      .Resolve(binaries);
+}
+
 std::unordered_map<std::string, std::string> LanguageConfig::LoadLookupTable(
     const std::filesystem::path& binaries) const {
   THESPEON_PROFILE_SCOPE("LoadLookupTable");

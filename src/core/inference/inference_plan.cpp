@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -20,10 +21,11 @@ namespace thespeon {
 
 namespace {
 
-// The phonemizer for one language: its config, lookup table, and the words
-// that table is missing.
+// The phonemizer for one language: its config, text rules, lookup table, and
+// the words that table is missing.
 struct Phonemizer {
   LanguageConfig config;
+  std::shared_ptr<const inference_detail::TextRules> rules;
   std::unordered_map<std::string, std::string> lookup;
   std::vector<std::string> unknown_words;
 };
@@ -61,16 +63,20 @@ void CheckEmotions(const CharacterModule& character,
   }
 }
 
-// Normalizes each text in place and returns its markers.
+// Normalizes each text in place and returns its markers. rules holds each
+// segment's language rules, or is empty to check only what does not depend on
+// language.
 std::vector<std::vector<std::size_t>> NormalizeSegments(
-    std::vector<SynthInputSegmentV100>& segments) {
+    std::vector<SynthInputSegmentV100>& segments,
+    const std::vector<const inference_detail::TextRules*>& rules = {}) {
   const auto count = segments.size();
   std::vector<std::vector<std::size_t>> markers(count);
   for (std::size_t index = 0; index < count; ++index) {
     auto& segment = segments[index];
     auto normalized = inference_detail::NormalizeSegment(
         segment.text, index > 0, index + 1 < count,
-        segment.is_custom_pronounced, index);
+        segment.is_custom_pronounced, index,
+        rules.empty() ? nullptr : rules[index]);
     segment.text = std::move(normalized.text);
     markers[index] = std::move(normalized.markers);
     if (segment.text.empty())
@@ -101,10 +107,6 @@ struct InferencePlan::Impl {
     auto& value = std::get<SynthInputV100>(input);
     const auto count = value.segments.size();
     CheckEmotions(character, value);
-    markers = NormalizeSegments(value.segments);
-    PopulateEmotionKeypoints(value.segments, value.default_emotion);
-    PopulateSpeedKeypoints(value.segments);
-    PopulateLoudnessKeypoints(value.segments);
 
     std::unordered_map<std::string, std::size_t> phonemizer_of;
     std::vector<std::vector<SynthInputSegmentV100>> phonemizer_segments;
@@ -118,12 +120,27 @@ struct InferencePlan::Impl {
         if (module == language_modules.end())
           throw std::runtime_error("No language module was resolved for \"" +
                                    language + "\"");
-        phonemizers.push_back({LoadLanguageConfig(module->second), {}, {}});
+        auto config = LoadLanguageConfig(module->second);
+        auto rules = std::make_shared<const inference_detail::TextRules>(
+            inference_detail::TextRules::Load(
+                config.TextPreprocessingPath(binaries)));
+        phonemizers.push_back({std::move(config), std::move(rules), {}, {}});
         phonemizer_segments.emplace_back();
       }
       segment_phonemizer[index] = found->second;
-      phonemizer_segments[found->second].push_back(value.segments[index]);
     }
+
+    // Each segment is normalized by its own language's rules.
+    std::vector<const inference_detail::TextRules*> segment_rules(count);
+    for (std::size_t index = 0; index < count; ++index)
+      segment_rules[index] = phonemizers[segment_phonemizer[index]].rules.get();
+    markers = NormalizeSegments(value.segments, segment_rules);
+    PopulateEmotionKeypoints(value.segments, value.default_emotion);
+    PopulateSpeedKeypoints(value.segments);
+    PopulateLoudnessKeypoints(value.segments);
+    for (std::size_t index = 0; index < count; ++index)
+      phonemizer_segments[segment_phonemizer[index]].push_back(
+          value.segments[index]);
 
     for (std::size_t index = 0; index < phonemizers.size(); ++index) {
       const auto& segments = phonemizer_segments[index];
@@ -134,8 +151,8 @@ struct InferencePlan::Impl {
         continue;
       auto& phonemizer = phonemizers[index];
       phonemizer.lookup = phonemizer.config.LoadLookupTable(binaries);
-      phonemizer.unknown_words =
-          inference_detail::UnknownWords(segments, phonemizer.lookup);
+      phonemizer.unknown_words = inference_detail::UnknownWords(
+          segments, phonemizer.lookup, *phonemizer.rules);
     }
   }
 
@@ -203,7 +220,8 @@ InferenceRequest InferencePlan::PrepareCharacterModule(
         impl_->phonemizers[impl_->segment_phonemizer[index]];
     encoded.push_back(inference_detail::EncodeForCharacter(
         segments[index].text, impl_->markers[index], phonemizer.lookup,
-        impl_->character_config, segments[index].is_custom_pronounced,
+        *phonemizer.rules, impl_->character_config,
+        segments[index].is_custom_pronounced,
         &marker_tokens[index], warnings));
   }
   return InferenceRequest{

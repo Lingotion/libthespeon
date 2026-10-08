@@ -124,6 +124,15 @@ if(METAGRAPH_PROFILER STREQUAL "tracy")
   target_compile_definitions(metagraph_runner_impl PRIVATE METAGRAPH_PROFILER_TRACY)
 endif()
 
+# Text preprocessing needs only Protobuf, so it is a target of its own.
+add_library(metagraph_textprep STATIC
+  src/textprep_runner.cpp
+  src/text_preprocessing.pb.cc)
+add_library(metagraph::textprep ALIAS metagraph_textprep)
+target_include_directories(metagraph_textprep PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(metagraph_textprep PUBLIC protobuf::libprotobuf)
+
 function(metagraph_stage_runtime target)
   if(NOT TARGET "${target}")
     message(FATAL_ERROR
@@ -150,19 +159,27 @@ function(metagraph_stage_runtime target)
 endfunction()
 
 if(METAGRAPH_BUILD_TOOLS)
-  add_executable(run_lara src/run_lara.cpp)
+  add_executable(run_lara tools/run_lara.cpp)
   target_link_libraries(run_lara PRIVATE metagraph::runner)
   metagraph_stage_runtime(run_lara)
 
-  add_executable(run_phonemizer src/run_phonemizer.cpp)
+  add_executable(run_phonemizer tools/run_phonemizer.cpp)
   target_link_libraries(run_phonemizer PRIVATE metagraph::runner)
   metagraph_stage_runtime(run_phonemizer)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(metagraph_runner_impl PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(metagraph_textprep PRIVATE -Wall -Wextra -Wpedantic)
   if(METAGRAPH_BUILD_TOOLS)
     target_compile_options(run_lara PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(run_phonemizer PRIVATE -Wall -Wextra -Wpedantic)
   endif()
+endif()
+
+option(METAGRAPH_BUILD_TESTS "Build the MetaGraph unit tests"
+  ${PROJECT_IS_TOP_LEVEL})
+if(METAGRAPH_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
 endif()

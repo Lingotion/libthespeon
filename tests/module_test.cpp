@@ -78,5 +78,27 @@ TEST(FileReference, ResolvesByHashAndExtension) {
   EXPECT_EQ(reference.Resolve("bin"), std::filesystem::path("bin") / "abc123.onnx");
 }
 
+TEST(LanguageConfig, ResolvesTheTextPreprocessingFile) {
+  LanguageConfig config;
+  config.name = "English";
+  config.files["textpreprocessing"] = {"abc123", "textprep"};
+  EXPECT_EQ(config.TextPreprocessingPath("bin"),
+            std::filesystem::path("bin") / "abc123.textprep");
+}
+
+// Packs built before text preprocessing moved into them cannot be used.
+TEST(LanguageConfig, RefusesAPackWithoutTextPreprocessing) {
+  LanguageConfig config;
+  config.name = "English";
+  try {
+    config.TextPreprocessingPath("bin");
+    FAIL() << "Expected an error";
+  } catch (const std::runtime_error& error) {
+    EXPECT_STREQ(error.what(),
+                 "Language module English is missing its textpreprocessing "
+                 "file");
+  }
+}
+
 }  // namespace
 }  // namespace thespeon

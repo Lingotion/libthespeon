@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-project(libthespeon VERSION 0.1.0 LANGUAGES C CXX)
+project(libthespeon VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,7 +87,7 @@ target_include_directories(thespeon_core PUBLIC
 target_include_directories(thespeon_core PRIVATE
   "${PROJECT_SOURCE_DIR}/third_party")
 target_link_libraries(thespeon_core
-  PUBLIC metagraph::runner
+  PUBLIC metagraph::runner metagraph::textprep
   PRIVATE libzip::zip ZLIB::ZLIB)
 if(THESPEON_PROFILER STREQUAL "tracy")
   target_link_libraries(thespeon_core PUBLIC Tracy::TracyClient)

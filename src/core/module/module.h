@@ -133,6 +133,9 @@ struct LanguageConfig {
       const std::filesystem::path& binaries) const;
   std::unordered_map<std::string, std::string> LoadLookupTable(
       const std::filesystem::path& binaries) const;
+  // Packs built before text preprocessing moved into them have none.
+  std::filesystem::path TextPreprocessingPath(
+      const std::filesystem::path& binaries) const;
 };
 
 CharacterModule LoadCharacterModule(const std::filesystem::path& path);
