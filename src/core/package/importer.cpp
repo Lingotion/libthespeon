@@ -175,7 +175,7 @@ ImportResult Importer::Import(const std::filesystem::path& pack) const {
     const bool binary =
         section == "binaries" &&
         (extension == ".json" || extension == ".onnx" ||
-         extension == ".metagraph");
+         extension == ".metagraph" || extension == ".textprep");
     if (!config && !binary) continue;
     if (config) ++descriptors;
 

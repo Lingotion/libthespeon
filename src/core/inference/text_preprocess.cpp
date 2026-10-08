@@ -9,22 +9,9 @@
 #include <utility>
 
 #include "core/inference/control_characters.h"
-#include "core/inference/unicode_case.h"
 
 namespace thespeon::inference_detail {
 namespace {
-
-bool IsWordStart(char32_t value) {
-  return unicode::IsLetter(value) || value == U'\'';
-}
-
-// A combining mark extends the word it follows but never starts one, so a stray
-// mark after punctuation stays a symbol rather than becoming a word of pure
-// diacritics. Without this, lowercased İ (i + U+0307) and decomposed accents
-// split their word in two. Python's service splits on isalpha alone.
-bool IsWordContinuation(char32_t value) {
-  return IsWordStart(value) || unicode::IsMark(value);
-}
 
 std::string EncodeUtf8String(const std::u32string& value) {
   std::string result;
@@ -32,91 +19,39 @@ std::string EncodeUtf8String(const std::u32string& value) {
   return result;
 }
 
-std::vector<std::string> SplitWords(const std::string& text) {
-  const auto value = DecodeUtf8(text);
-  std::vector<std::string> result;
-  for (std::size_t index = 0; index < value.size();) {
-    if (!IsWordStart(value[index])) {
-      ++index;
-      continue;
-    }
-    const auto start = index;
-    while (index < value.size() && IsWordContinuation(value[index])) ++index;
-    result.push_back(EncodeUtf8String(value.substr(start, index - start)));
-  }
-  return result;
-}
-
-// The set the Python, Unity and Unreal preprocessors all fold. Kept one per line
-// with the Unicode names so it stays diffable by eye against the other three.
-bool IsAmbiguousApostrophe(char32_t value) {
-  switch (value) {
-    case 0x2018:  // LEFT SINGLE QUOTATION MARK
-    case 0x2019:  // RIGHT SINGLE QUOTATION MARK
-    case 0x201b:  // SINGLE HIGH-REVERSED-9 QUOTATION MARK
-    case 0x02bc:  // MODIFIER LETTER APOSTROPHE
-    case 0x02bb:  // MODIFIER LETTER TURNED COMMA
-    case 0xff07:  // FULLWIDTH APOSTROPHE
-    case 0x0060:  // GRAVE ACCENT
-    case 0x00b4:  // ACUTE ACCENT
-    case 0x2032:  // PRIME
-    case 0x275b:  // HEAVY SINGLE TURNED COMMA QUOTATION MARK ORNAMENT
-    case 0x275c:  // HEAVY SINGLE COMMA QUOTATION MARK ORNAMENT
-    case 0x02c8:  // MODIFIER LETTER VERTICAL LINE
-    case 0x02ca:  // MODIFIER LETTER ACUTE ACCENT
-    case 0x02cb:  // MODIFIER LETTER GRAVE ACCENT
-    case 0x1fef:  // GREEK VARIA
-    case 0x1ffd:  // GREEK OXIA
-    case 0x1fbf:  // GREEK PSILI
-    case 0x1ffe:  // GREEK DASIA
-    case 0x0374:  // GREEK NUMERAL SIGN
-    case 0x0384:  // GREEK TONOS
-    case 0x055a:  // ARMENIAN APOSTROPHE
-    case 0x07f4:  // NKO HIGH TONE APOSTROPHE
-    case 0x07f5:  // NKO LOW TONE APOSTROPHE
-    case 0x05f3:  // HEBREW PUNCTUATION GERESH
-    case 0x05f4:  // HEBREW PUNCTUATION GERSHAYIM
-    case 0xfe32:  // PRESENTATION FORM FOR VERTICAL EN DASH
-      return true;
-    default:
-      return false;
-  }
-}
-
-// Grapheme cleanup. Only graphemic text goes through here - see NormalizeSegment.
-std::string NormalizeText(const std::string& text, bool keep_leading,
-                          bool keep_trailing) {
-  std::u32string result;
-  bool previous_space = !keep_leading;
-  for (auto code_point : DecodeUtf8(text)) {
-    if (IsAmbiguousApostrophe(code_point)) code_point = U'\'';
-
-    if (unicode::IsSpace(code_point)) {
-      if (!previous_space) result.push_back(U' ');
-      previous_space = true;
-    } else {
-      result.push_back(code_point);
-      previous_space = false;
-    }
-  }
-  if (!keep_trailing && !result.empty() && result.back() == U' ')
-    result.pop_back();
-  return EncodeUtf8String(unicode::ToLower(result));
-}
-
-// Runs on both graphemic and custom-pronounced text, so it is the single place
-// sample requests are collapsed. Adjacent requests mean one sample; any
-// character between them, a space included, separates two.
-NormalizedText ExtractMarkers(const std::string& text, std::size_t index) {
-  std::u32string kept;
-  std::vector<std::size_t> positions;
-  bool previous_marker = false;
+void RejectSequenceMarkers(const std::string& text, std::size_t index) {
   for (const auto code_point : DecodeUtf8(text)) {
     if (code_point == control::kSequenceStart ||
         code_point == control::kSequenceEnd)
       throw std::invalid_argument(
           "$.segments[" + std::to_string(index) +
           "].text: Reserved sequence-marker character");
+  }
+}
+
+// The language's rules, then the boundary spaces between segments.
+std::string NormalizeText(const std::string& text, bool keep_leading,
+                          bool keep_trailing, const TextRules& rules) {
+  auto result = rules.ApplySteps(DecodeUtf8(text));
+  if (!keep_leading) {
+    const auto first = result.find_first_not_of(U' ');
+    result.erase(0, first == std::u32string::npos ? result.size() : first);
+  }
+  if (!keep_trailing) {
+    const auto last = result.find_last_not_of(U' ');
+    result.erase(last == std::u32string::npos ? 0 : last + 1);
+  }
+  return EncodeUtf8String(result);
+}
+
+// Runs on both graphemic and custom-pronounced text, so it is the single place
+// sample requests are collapsed. Adjacent requests mean one sample; any
+// character between them, a space included, separates two.
+NormalizedText ExtractMarkers(const std::string& text) {
+  std::u32string kept;
+  std::vector<std::size_t> positions;
+  bool previous_marker = false;
+  for (const auto code_point : DecodeUtf8(text)) {
     if (code_point == control::kAudioSampleRequest) {
       if (!previous_marker) positions.push_back(kept.size());
       previous_marker = true;
@@ -126,6 +61,39 @@ NormalizedText ExtractMarkers(const std::string& text, std::size_t index) {
     kept.push_back(code_point);
   }
   return {EncodeUtf8String(kept), std::move(positions)};
+}
+
+// A span of graphemic text that is spoken as one unit: a word or a number.
+struct Spoken {
+  std::size_t start;
+  std::size_t end;
+  std::u32string text;
+  bool is_number;
+};
+
+// The words and numbers of graphemic text, in order. Words are looked up in
+// lookup, which also decides whether joiners may end them.
+std::vector<Spoken> SpokenSpans(
+    const std::u32string& text,
+    const std::unordered_map<std::string, std::string>& lookup,
+    const TextRules& rules) {
+  const auto is_known = [&](const std::u32string& word) {
+    return lookup.count(EncodeUtf8String(word)) > 0;
+  };
+  std::vector<Spoken> result;
+  std::size_t offset = 0;
+  for (const auto& [part, is_number] : rules.Partition(text)) {
+    if (is_number) {
+      result.push_back({offset, offset + part.size(), part, true});
+    } else {
+      for (auto& [index, word] : rules.SplitWords(part, is_known))
+        result.push_back(
+            {offset + index, offset + index + word.size(), std::move(word),
+             false});
+    }
+    offset += part.size();
+  }
+  return result;
 }
 
 }  // namespace
@@ -206,28 +174,32 @@ std::string EncodeUtf8(char32_t code_point) {
 
 NormalizedText NormalizeSegment(const std::string& text, bool keep_leading,
                                 bool keep_trailing, bool custom_pronounced,
-                                std::size_t segment_index) {
+                                std::size_t segment_index,
+                                const TextRules* rules) {
+  // Checked before the rules run, since they may remove the markers.
+  RejectSequenceMarkers(text, segment_index);
   // Custom-pronounced segments carry a phonetic spelling verbatim, so they skip
   // grapheme cleanup entirely, as the Python service does. Sample requests are
-  // still extracted from them and the reserved sequence markers still rejected.
+  // still extracted from them.
   //
   // The accepted consequence is that a typed U+0027 apostrophe stays U+0027 and
   // encodes as its own id rather than as U+02C8 primary stress. The user is
   // spelling phonemes and is expected to type the phoneme they mean.
-  return ExtractMarkers(
-      custom_pronounced ? text
-                        : NormalizeText(text, keep_leading, keep_trailing),
-      segment_index);
+  if (custom_pronounced || rules == nullptr) return ExtractMarkers(text);
+  return ExtractMarkers(NormalizeText(text, keep_leading, keep_trailing, *rules));
 }
 
 std::vector<std::string> UnknownWords(
     const std::vector<SynthInputSegmentV100>& segments,
-    const std::unordered_map<std::string, std::string>& lookup) {
+    const std::unordered_map<std::string, std::string>& lookup,
+    const TextRules& rules) {
   std::vector<std::string> result;
   std::set<std::string> seen;
   for (const auto& segment : segments) {
     if (segment.is_custom_pronounced) continue;
-    for (const auto& word : SplitWords(segment.text)) {
+    for (const auto& span : SpokenSpans(DecodeUtf8(segment.text), lookup, rules)) {
+      if (span.is_number) continue;
+      const auto word = EncodeUtf8String(span.text);
       if (!lookup.count(word) && seen.insert(word).second)
         result.push_back(word);
     }
@@ -238,8 +210,8 @@ std::vector<std::string> UnknownWords(
 std::vector<std::int64_t> EncodeForCharacter(
     const std::string& text, const std::vector<std::size_t>& markers,
     const std::unordered_map<std::string, std::string>& lookup,
-    const CharacterConfig& config, bool custom_pronounced,
-    std::vector<std::int64_t>* marker_tokens,
+    const TextRules& rules, const CharacterConfig& config,
+    bool custom_pronounced, std::vector<std::int64_t>* marker_tokens,
     std::vector<std::string>* warnings) {
   const auto input = DecodeUtf8(text);
   std::vector<std::int64_t> result;
@@ -258,33 +230,43 @@ std::vector<std::int64_t> EncodeForCharacter(
       marker_tokens->push_back(static_cast<std::int64_t>(token));
     ++next_marker;
   };
+  // Symbols up to end pass through as they are.
+  const auto pass_through = [&](std::size_t from, std::size_t end) {
+    for (auto index = from; index < end; ++index) {
+      while (next_marker < markers.size() && markers[next_marker] == index)
+        emit(result.size());
+      append(input[index]);
+    }
+  };
 
-  for (std::size_t index = 0; index < input.size();) {
-    if (!custom_pronounced && IsWordStart(input[index])) {
-      const auto start = index;
-      const auto token_start = result.size();
-      while (index < input.size() && IsWordContinuation(input[index])) {
-        ++index;
-      }
-      const auto word = EncodeUtf8String(input.substr(start, index - start));
+  std::size_t index = 0;
+  const auto spans = custom_pronounced
+                         ? std::vector<Spoken>{}
+                         : SpokenSpans(input, lookup, rules);
+  for (const auto& span : spans) {
+    pass_through(index, span.start);
+    std::u32string phonemes;
+    if (span.is_number) {
+      phonemes = rules.Expand(span.text);
+    } else {
+      const auto word = EncodeUtf8String(span.text);
       const auto found = lookup.find(word);
       if (found == lookup.end())
         throw std::runtime_error("No pronunciation for \"" + word + "\"");
-      for (const auto code_point : DecodeUtf8(found->second)) append(code_point);
-      const auto graphemes = index - start;
-      const auto tokens = result.size() - token_start;
-      while (next_marker < markers.size() && markers[next_marker] < index) {
-        const auto scaled = (markers[next_marker] - start) * tokens;
-        emit(token_start + (scaled + graphemes / 2) / graphemes);
-      }
-    } else {
-      while (next_marker < markers.size() && markers[next_marker] == index) {
-        emit(result.size());
-      }
-      append(input[index]);
-      ++index;
+      phonemes = DecodeUtf8(found->second);
     }
+    const auto token_start = result.size();
+    for (const auto code_point : phonemes) append(code_point);
+    // Markers inside the span keep their relative position in it.
+    const auto graphemes = span.end - span.start;
+    const auto tokens = result.size() - token_start;
+    while (next_marker < markers.size() && markers[next_marker] < span.end) {
+      const auto scaled = (markers[next_marker] - span.start) * tokens;
+      emit(token_start + (scaled + graphemes / 2) / graphemes);
+    }
+    index = span.end;
   }
+  pass_through(index, input.size());
   while (next_marker < markers.size()) emit(result.size());
   return result;
 }

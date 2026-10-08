@@ -21,11 +21,12 @@ add_executable(thespeon_tests
   test_support.cpp
   text_preprocess_test.cpp
   thespeon_input_test.cpp
-  unicode_case_test.cpp
   wav_writer_test.cpp)
 target_include_directories(thespeon_tests PRIVATE
   "${PROJECT_SOURCE_DIR}/third_party")
 target_link_libraries(thespeon_tests PRIVATE thespeon_core GTest::gtest_main)
+target_compile_definitions(thespeon_tests PRIVATE
+  "THESPEON_TEXTPREP_FIXTURE=\"${PROJECT_SOURCE_DIR}/metagraph-cpp/tests/fixtures/eng.textprep\"")
 
 if(MSVC)
   target_compile_options(thespeon_tests PRIVATE /W4 /utf-8)
