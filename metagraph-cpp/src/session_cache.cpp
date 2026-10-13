@@ -8,12 +8,13 @@
 #include <unordered_set>
 
 #include "metagraph_profile.h"
+#include "utf8_path.h"
 
 namespace metagraph {
 namespace {
 
 std::string CacheKey(const std::filesystem::path& model, int device) {
-  return model.string() + '#' + std::to_string(device);
+  return PathToUtf8(model) + '#' + std::to_string(device);
 }
 
 Ort::SessionOptions MakeSessionOptions(const SessionOptionsConfig& config) {
@@ -211,7 +212,7 @@ class GraphCache::Impl {
     std::error_code error;
     const Stamp stamp{std::filesystem::file_size(graph_path, error),
                       std::filesystem::last_write_time(graph_path, error)};
-    const auto key = graph_path.string();
+    const auto key = PathToUtf8(graph_path);
     {
       std::lock_guard lock(mutex_);
       if (const auto found = graphs_.find(key);
@@ -221,10 +222,10 @@ class GraphCache::Impl {
 
     std::ifstream input(graph_path, std::ios::binary);
     if (!input)
-      throw std::runtime_error("Could not open graph: " + graph_path.string());
+      throw std::runtime_error("Could not open graph: " + PathToUtf8(graph_path));
     auto graph = std::make_shared<metaonnx::MetaGraph>();
     if (!graph->ParseFromIstream(&input))
-      throw std::runtime_error("Could not parse graph: " + graph_path.string());
+      throw std::runtime_error("Could not parse graph: " + PathToUtf8(graph_path));
 
     std::lock_guard lock(mutex_);
     graphs_[key] = Entry{graph, stamp};

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "metagraph_runner.h"
+#include "session_cache.h"
 
 namespace thespeon {
 
@@ -22,16 +23,10 @@ struct SessionKey {
   int device = 0;
 };
 
-struct RuntimeOptions {
-  int intra_op_threads = 0;
-  bool allow_spinning = true;
-  bool low_memory = false;
-};
-
 class InferenceRuntime {
  public:
   explicit InferenceRuntime(std::filesystem::path binaries,
-                            RuntimeOptions options = {});
+                            metagraph::SessionOptionsConfig options = {});
 
   metagraph::Tensor Execute(InferenceRequest request,
                             const metagraph::CancelToken& cancel = {});

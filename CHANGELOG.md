@@ -4,6 +4,14 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+# [0.3.0] - 2026-10-13
+
+### Added
+* `THESPEON_INFERENCE_PER_SESSION_THREADS` for `thespeon_set_inference_options`, and `--per-session-threads` in the CLI, give each loaded model its own inference thread pool instead of the shared one.
+### Fixed
+* On Windows, paths with characters outside the system code page (for example a user name like `测试`) no longer break importing, preloading or synthesis, and error messages report such paths as UTF-8. The CLI also accepts such paths as arguments.
+* The `--emotion` option now works properly in the CLI.
+
 # [0.2.0] - 2026-10-08
 This version requires updated character and language modules, please re-download your characters. Modules made for earlier package versions can no longer be imported.
 

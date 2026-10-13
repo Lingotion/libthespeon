@@ -17,6 +17,7 @@
 #include "core/inference/inference_runtime.h"
 #include "core/inference/stream_buffer.h"
 #include "core/utils/profile.h"
+#include "core/utils/utf8_path.h"
 #include "core/utils/wav_writer.h"
 
 namespace thespeon {
@@ -38,9 +39,10 @@ constexpr const char* kDefaultLanguage = "eng";
 
 fs::path DefaultDataDirectory() {
 #if defined(_WIN32)
-  if (const char* path = std::getenv("LOCALAPPDATA"))
+  // getenv narrows through the ANSI code page, losing non-ASCII user names.
+  if (const wchar_t* path = _wgetenv(L"LOCALAPPDATA"))
     return fs::path(path) / "metagraph-cpp" / "models";
-  if (const char* path = std::getenv("APPDATA"))
+  if (const wchar_t* path = _wgetenv(L"APPDATA"))
     return fs::path(path) / "metagraph-cpp" / "models";
 #elif defined(__APPLE__)
   if (const char* path = std::getenv("HOME"))
@@ -144,6 +146,15 @@ struct Registration {
   EngineOptions options;
 };
 
+metagraph::SessionOptionsConfig ToSessionConfig(const EngineOptions& options) {
+  metagraph::SessionOptionsConfig config;
+  config.intra_op_threads = options.intra_op_threads;
+  config.use_global_thread_pools = options.use_global_thread_pools;
+  config.allow_spinning = options.allow_spinning;
+  config.low_memory = options.low_memory;
+  return config;
+}
+
 }  // namespace
 
 ThespeonInput MakeInput(const Catalog& catalog, const std::string& model,
@@ -157,6 +168,10 @@ ThespeonInput MakeInput(const Catalog& catalog, const std::string& model,
   auto& segment = result.segments.emplace_back();
   segment.text = text;
   segment.emotion = emotion;
+  if (emotion) {
+    segment.start_emotion = segment.end_emotion =
+        EmotionWeights{{*emotion, 1.0}};
+  }
   return result;
 }
 
@@ -173,9 +188,7 @@ class Engine::Impl {
   Impl(fs::path data_directory)
       : data_directory_(std::move(data_directory)),
         binaries_(data_directory_ / "binaries"),
-        runtime_(binaries_, {registration_.options.intra_op_threads,
-                             registration_.options.allow_spinning,
-                             registration_.options.low_memory}),
+        runtime_(binaries_, ToSessionConfig(registration_.options)),
         catalog_(Catalog::Load(data_directory_)) {}
 
   void Refresh() {
@@ -338,7 +351,7 @@ class Engine::Impl {
   // re-read in between keeps its sessions out of the cache.
   template <typename Module>
   bool IsLoaded(const Module& module, std::uint64_t catalog_reloads) const {
-    const auto key = module.config_path.string();
+    const auto key = PathToUtf8(module.config_path);
     {
       std::lock_guard lock(module_sessions_mutex_);
       if (const auto found = module_sessions_.find(key);

@@ -220,5 +220,22 @@ TEST(EngineTest, SynthesizesWithSessionOptionsThatLockWhileInUse) {
   EXPECT_NO_THROW(SetEngineOptions({}));
 }
 
+TEST(EngineTest, SynthesizesWithPerSessionThreadPools) {
+  const auto data_directory = TestDataDirectory();
+  if (!fs::is_directory(data_directory))
+    GTEST_SKIP() << "No model data directory at " << data_directory;
+  EngineOptions config;
+  config.intra_op_threads = 2;
+  config.use_global_thread_pools = false;
+  SetEngineOptions(config);
+  {
+    Engine engine(data_directory);
+    if (const auto character = UsableCharacter(engine.catalog())) {
+      EXPECT_GT(SynthesizedSamples(engine, *character), 0u);
+    }
+  }
+  SetEngineOptions({});
+}
+
 }  // namespace
 }  // namespace thespeon

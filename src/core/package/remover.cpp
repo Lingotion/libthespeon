@@ -9,6 +9,7 @@
 #include <system_error>
 #include <utility>
 
+#include "core/utils/utf8_path.h"
 #include "session_cache.h"
 
 namespace thespeon {
@@ -139,11 +140,10 @@ RemoveResult Remover::Remove(const std::string& selector,
     if (HasIdentifier(module, selector)) language_by_id = &module;
   }
   if (character_by_id != nullptr && language_by_id != nullptr)
-    throw std::runtime_error("Module identifier " + selector +
-                             " names both " +
-                             character_by_id->config_path.filename().string() +
-                             " and " +
-                             language_by_id->config_path.filename().string());
+    throw std::runtime_error(
+        "Module identifier " + selector + " names both " +
+        PathToUtf8(character_by_id->config_path.filename()) + " and " +
+        PathToUtf8(language_by_id->config_path.filename()));
 
   if (character_by_id != nullptr) {
     config_path = character_by_id->config_path;
@@ -176,7 +176,7 @@ RemoveResult Remover::Remove(const std::string& selector,
 
   std::error_code error;
   if (!dry_run && !fs::remove(config_path, error))
-    throw std::runtime_error("Could not delete " + config_path.string());
+    throw std::runtime_error("Could not delete " + PathToUtf8(config_path));
 
   if (!catalog.problems().empty()) {
     result.swept = false;

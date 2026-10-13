@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "text_preprocessing.pb.h"
+#include "utf8_path.h"
 
 namespace metagraph::textprep {
 namespace {
@@ -871,11 +872,11 @@ TextPreprocessing TextPreprocessing::Load(const std::filesystem::path& path) {
   proto::TextPreprocessing message;
   if (!stream || !message.ParseFromIstream(&stream))
     throw std::runtime_error("Could not read text preprocessing file: " +
-                             path.string());
+                             PathToUtf8(path));
   try {
     return TextPreprocessing(message);
   } catch (const std::exception& error) {
-    throw std::runtime_error(path.string() + ": " + error.what());
+    throw std::runtime_error(PathToUtf8(path) + ": " + error.what());
   }
 }
 

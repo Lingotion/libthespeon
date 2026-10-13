@@ -17,6 +17,8 @@
 #include <zip.h>
 #include <zlib.h>
 
+#include "core/utils/utf8_path.h"
+
 namespace thespeon {
 namespace {
 
@@ -33,7 +35,7 @@ std::string ToLower(std::string value) {
 std::uint32_t FileCrc32(const fs::path& path) {
   std::ifstream input(path, std::ios::binary);
   std::array<char, 65536> buffer{};
-  if (!input) throw std::runtime_error("Could not read " + path.string());
+  if (!input) throw std::runtime_error("Could not read " + PathToUtf8(path));
   uLong crc = crc32(0, Z_NULL, 0);
   while (input) {
     input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
@@ -43,14 +45,15 @@ std::uint32_t FileCrc32(const fs::path& path) {
                   static_cast<uInt>(count));
     }
   }
-  if (!input.eof()) throw std::runtime_error("Could not read " + path.string());
+  if (!input.eof())
+    throw std::runtime_error("Could not read " + PathToUtf8(path));
   return static_cast<std::uint32_t>(crc);
 }
 
 class ZipArchive {
  public:
   explicit ZipArchive(const fs::path& path) {
-    const auto value = path.string();
+    const auto value = PathToUtf8(path);
     int code = 0;
     archive_ = zip_open(value.c_str(), ZIP_RDONLY, &code);
     if (archive_ != nullptr) return;
@@ -94,7 +97,7 @@ void ExtractEntry(zip_t* archive, zip_uint64_t index, const fs::path& target) {
   if (entry.get() == nullptr) throw std::runtime_error(zip_strerror(archive));
   std::ofstream output(target, std::ios::binary);
   if (!output)
-    throw std::runtime_error("Could not write " + target.string());
+    throw std::runtime_error("Could not write " + PathToUtf8(target));
 
   std::array<char, 65536> buffer{};
   for (;;) {
@@ -103,11 +106,11 @@ void ExtractEntry(zip_t* archive, zip_uint64_t index, const fs::path& target) {
     if (count == 0) break;
     output.write(buffer.data(), static_cast<std::streamsize>(count));
     if (!output)
-      throw std::runtime_error("Could not write " + target.string());
+      throw std::runtime_error("Could not write " + PathToUtf8(target));
   }
   output.close();
   if (!output)
-    throw std::runtime_error("Could not write " + target.string());
+    throw std::runtime_error("Could not write " + PathToUtf8(target));
 }
 
 std::vector<std::string> SplitArchivePath(std::string name) {
@@ -133,10 +136,10 @@ Importer::Importer(std::filesystem::path data_directory)
     : data_directory_(std::move(data_directory)) {}
 
 ImportResult Importer::Import(const std::filesystem::path& pack) const {
-  if (ToLower(pack.extension().string()) != ".lingotion")
+  if (ToLower(PathToUtf8(pack.extension())) != ".lingotion")
     throw std::runtime_error("Model packs must use the .lingotion extension");
   if (!fs::is_regular_file(pack))
-    throw std::runtime_error("Model pack does not exist: " + pack.string());
+    throw std::runtime_error("Model pack does not exist: " + PathToUtf8(pack));
 
   std::error_code error;
   fs::create_directories(data_directory_ / "configs", error);
@@ -167,10 +170,10 @@ ImportResult Importer::Import(const std::filesystem::path& pack) const {
       continue;
 
     const auto& section = parts[parts.size() - 2];
-    const fs::path name(parts.back());
+    const auto name = PathFromUtf8(parts.back());
     if (name.filename() != name)
       throw std::runtime_error("Unsafe archive filename");
-    const auto extension = ToLower(name.extension().string());
+    const auto extension = ToLower(PathToUtf8(name.extension()));
     const bool config = section == "configs" && extension == ".json";
     const bool binary =
         section == "binaries" &&
@@ -182,12 +185,12 @@ ImportResult Importer::Import(const std::filesystem::path& pack) const {
     const auto destination = data_directory_ / section / name;
     if (!seen.insert(destination).second)
       throw std::runtime_error("Duplicate archive entry for " +
-                               destination.string());
+                               PathToUtf8(destination));
     if (fs::exists(destination)) {
       if (fs::file_size(destination) != stat.size ||
           FileCrc32(destination) != stat.crc)
         throw std::runtime_error("Installed file conflicts with " +
-                                 name.string());
+                                 PathToUtf8(name));
       ++result.unchanged;
       continue;
     }
@@ -205,7 +208,7 @@ ImportResult Importer::Import(const std::filesystem::path& pack) const {
     fs::rename(temporary, destination, error);
     if (error) {
       fs::remove(temporary, error);
-      throw std::runtime_error("Failed to install " + destination.string());
+      throw std::runtime_error("Failed to install " + PathToUtf8(destination));
     }
     ++result.written;
   }

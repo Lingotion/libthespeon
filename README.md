@@ -115,11 +115,11 @@ The C ABI has no default data directory: every call takes one explicitly, so you
 - call `thespeon_engine_refresh` after importing into an engine's data directory;
 - query retained model memory with `thespeon_engine_resident_bytes`;
 - check an input without synthesizing with `thespeon_engine_validate_input` (or `thespeon_validate_input`); it runs no model, so words the language module cannot pronounce are not caught;
-- call `thespeon_set_inference_options` before creating engines to set the thread count, spinning and low-memory mode for the whole process.
+- call `thespeon_set_inference_options` before creating engines to set the thread count, spinning, low-memory mode and per-model thread pools for the whole process.
 
 ### Threading
 
-Every call blocks on the calling thread, and callbacks run synchronously on that thread before the call returns. Audio buffers and sample-index arrays are borrowed for the callback duration. The only other threads are ONNX Runtime's inference thread pool. There is one per process, shared by every engine and model, so concurrent syntheses compete for the same threads. It is created with the first engine, using the options from `thespeon_set_inference_options`, and released with the last one; that is why the options cannot change while an engine exists.
+Every call blocks on the calling thread, and callbacks run synchronously on that thread before the call returns. Audio buffers and sample-index arrays are borrowed for the callback duration. The only other threads are ONNX Runtime's inference thread pool. By default there is one per process, shared by every engine and model, so concurrent syntheses compete for the same threads; with `THESPEON_INFERENCE_PER_SESSION_THREADS` each loaded model gets its own pool instead, so the thread count grows with the models loaded. The pool is created with the first engine, using the options from `thespeon_set_inference_options`, and released with the last one; that is why the options cannot change while an engine exists.
 
 - An engine may be used from several threads at once, including concurrent syntheses; `thespeon_engine_destroy` must not run alongside any other call on it.
 - A `thespeon_input` must not be used from two threads at once, but may be reused across calls.

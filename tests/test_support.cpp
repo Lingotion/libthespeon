@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <system_error>
 
+#include "core/utils/utf8_path.h"
+
 namespace thespeon::test {
 
 TempDirectory::TempDirectory() {
@@ -34,13 +36,13 @@ void WriteFile(const std::filesystem::path& path,
                const std::string& contents) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream output(path, std::ios::binary);
-  if (!output) throw std::runtime_error("Could not write " + path.string());
+  if (!output) throw std::runtime_error("Could not write " + PathToUtf8(path));
   output << contents;
 }
 
 std::string ReadFile(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
-  if (!input) throw std::runtime_error("Could not read " + path.string());
+  if (!input) throw std::runtime_error("Could not read " + PathToUtf8(path));
   std::ostringstream contents;
   contents << input.rdbuf();
   return contents.str();

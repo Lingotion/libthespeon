@@ -42,6 +42,7 @@ struct EngineOptions {
   int intra_op_threads = 0;
   bool allow_spinning = false;
   bool low_memory = false;
+  bool use_global_thread_pools = true;
 };
 
 // Applies to every Engine created afterwards; throws while one exists.
