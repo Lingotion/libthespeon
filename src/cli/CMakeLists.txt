@@ -25,6 +25,9 @@ add_executable(thespeon
 set_target_properties(thespeon PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 target_link_libraries(thespeon PRIVATE thespeon_core miniaudio)
+if(WIN32)
+  target_link_libraries(thespeon PRIVATE shell32)
+endif()
 
 if(MSVC)
   target_compile_options(thespeon PRIVATE /W4 /utf-8)

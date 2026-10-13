@@ -21,6 +21,7 @@ add_executable(thespeon_tests
   test_support.cpp
   text_preprocess_test.cpp
   thespeon_input_test.cpp
+  utf8_path_test.cpp
   wav_writer_test.cpp)
 target_include_directories(thespeon_tests PRIVATE
   "${PROJECT_SOURCE_DIR}/third_party")

@@ -19,6 +19,7 @@
 #include "meta_graph.pb.h"
 #include "metagraph_profile.h"
 #include "session_cache.h"
+#include "utf8_path.h"
 
 namespace metagraph {
 namespace {
@@ -878,16 +879,16 @@ class MetaGraphRunner::Impl {
       throw std::runtime_error("Unknown preferred device");
     }
     if (!std::filesystem::is_regular_file(path))
-      throw std::runtime_error("Model not found: " + path.string());
+      throw std::runtime_error("Model not found: " + PathToUtf8(path));
     const bool fresh = sessions_->TryGet(path, static_cast<int>(device)) == nullptr;
     auto handle = sessions_->GetOrCreate(path, static_cast<int>(device));
     if (fresh && (device == metaonnx::DEVICE_GPU || device == metaonnx::DEVICE_NPU)) {
-      std::cout << "WARNING: " << path.filename().string() << " requests "
+      std::cout << "WARNING: " << PathToUtf8(path.filename()) << " requests "
                 << metaonnx::DeviceType_Name(device)
                 << ", but this build is CPU-only - falling back to CPU\n";
     }
     if (debug_) {
-      std::cout << "  session " << path.filename().string() << " ["
+      std::cout << "  session " << PathToUtf8(path.filename()) << " ["
                 << metaonnx::DeviceType_Name(device)
                 << "] -> [CPUExecutionProvider]\n";
     }

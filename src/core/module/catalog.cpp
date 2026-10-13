@@ -10,6 +10,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "core/utils/utf8_path.h"
+
 namespace thespeon {
 namespace {
 
@@ -105,7 +107,7 @@ Catalog Catalog::Load(const std::filesystem::path& data_directory) {
   std::vector<std::filesystem::path> paths;
   for (const auto& entry : std::filesystem::directory_iterator(configs)) {
     if (entry.is_regular_file() &&
-        ToLower(entry.path().extension().string()) == ".json")
+        ToLower(PathToUtf8(entry.path().extension())) == ".json")
       paths.push_back(entry.path());
   }
   std::sort(paths.begin(), paths.end());
@@ -119,7 +121,7 @@ Catalog Catalog::Load(const std::filesystem::path& data_directory) {
         catalog.language_modules_.push_back(LoadLanguageModule(path));
       }
     } catch (const std::exception& error) {
-      catalog.problems_.push_back(path.filename().string() + ": " +
+      catalog.problems_.push_back(PathToUtf8(path.filename()) + ": " +
                                   error.what());
     }
   }

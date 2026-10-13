@@ -8,27 +8,14 @@
 #include <stdexcept>
 #include <utility>
 
+#include "core/utils/utf8_path.h"
 #include "session_cache.h"
 
 namespace thespeon {
-namespace {
-
-metagraph::SessionOptionsConfig ToSessionConfig(const RuntimeOptions& options) {
-  metagraph::SessionOptionsConfig config;
-  config.intra_op_threads = options.intra_op_threads;
-  config.use_global_thread_pools = true;
-  config.allow_spinning = options.allow_spinning;
-  config.low_memory = options.low_memory;
-  return config;
-}
-
-}  // namespace
-
 InferenceRuntime::InferenceRuntime(std::filesystem::path binaries,
-                                   RuntimeOptions options)
+                                   metagraph::SessionOptionsConfig options)
     : binaries_(std::move(binaries)),
-      sessions_(std::make_shared<metagraph::SessionCache>(
-          ToSessionConfig(options))),
+      sessions_(std::make_shared<metagraph::SessionCache>(options)),
       graphs_(std::make_shared<metagraph::GraphCache>()) {}
 
 void InferenceRuntime::Preload(const std::filesystem::path& graph,
@@ -65,10 +52,10 @@ std::vector<SessionKey> InferenceRuntime::Sessions(
     const std::filesystem::path& graph) const {
   std::ifstream input(graph, std::ios::binary);
   if (!input)
-    throw std::runtime_error("Could not open graph: " + graph.string());
+    throw std::runtime_error("Could not open graph: " + PathToUtf8(graph));
   metaonnx::MetaGraph parsed;
   if (!parsed.ParseFromIstream(&input))
-    throw std::runtime_error("Could not parse graph: " + graph.string());
+    throw std::runtime_error("Could not parse graph: " + PathToUtf8(graph));
   std::vector<SessionKey> result;
   for (const auto* node : metagraph::PreloadOrder(parsed)) {
     result.push_back({binaries_ / (node->model_path() + ".onnx"),

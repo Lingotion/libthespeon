@@ -227,10 +227,11 @@ TEST_F(CliTest, SynthesizeAndBenchAcceptInferenceOptions) {
   const auto output = scratch.path() / "out.wav";
   ExpectArgumentsAccepted(Thespeon(
       data.path(), "synthesize --model Ada --text Hi --threads 2 --spinning "
-                   "--low-memory --output " + Quote(output)));
+                   "--low-memory --per-session-threads --output " +
+                   Quote(output)));
   ExpectArgumentsAccepted(Thespeon(
-      data.path(),
-      "bench --model Ada --text Hi --threads 2 --spinning --low-memory"));
+      data.path(), "bench --model Ada --text Hi --threads 2 --spinning "
+                   "--low-memory --per-session-threads"));
 }
 
 TEST_F(CliTest, BenchAcceptsSweep) {

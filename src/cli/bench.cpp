@@ -147,6 +147,7 @@ std::string Flags(const EngineOptions& config) {
   flags << "--threads " << config.intra_op_threads;
   if (config.allow_spinning) flags << " --spinning";
   if (config.low_memory) flags << " --low-memory";
+  if (!config.use_global_thread_pools) flags << " --per-session-threads";
   return flags.str();
 }
 
@@ -156,6 +157,9 @@ std::string AbiFlags(const EngineOptions& config) {
   if (config.low_memory)
     flags += (flags.empty() ? "" : " | ") +
              std::string("THESPEON_INFERENCE_LOW_MEMORY");
+  if (!config.use_global_thread_pools)
+    flags += (flags.empty() ? "" : " | ") +
+             std::string("THESPEON_INFERENCE_PER_SESSION_THREADS");
   return flags.empty() ? "0" : flags;
 }
 

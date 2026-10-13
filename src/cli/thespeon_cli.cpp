@@ -19,7 +19,11 @@
 #include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <io.h>
+#include <windows.h>
+#include <shellapi.h>
 #else
 #include <unistd.h>
 #endif
@@ -30,6 +34,7 @@
 #include "core/input/thespeon_input.h"
 #include "core/module/catalog.h"
 #include "core/package/importer.h"
+#include "core/utils/utf8_path.h"
 
 namespace {
 
@@ -77,6 +82,8 @@ int Usage() {
             << "  --threads N   inference threads; 0 is the default\n"
             << "  --spinning    idle threads spin: faster, more CPU\n"
             << "  --low-memory  lower peak memory, somewhat slower\n"
+            << "  --per-session-threads  a thread pool per model instead of "
+               "one shared\n"
             << "\n"
             << "<input> is one of:\n"
             << "  --model MODEL --text TEXT [--emotion EMOTION]\n"
@@ -125,7 +132,8 @@ const std::vector<std::string> kInputOptions = {
 
 // Read by SetInferenceOptions; synthesize and bench both take them.
 const std::vector<std::string> kInferenceOptions = {"--threads"};
-const std::vector<std::string> kInferenceFlags = {"--spinning", "--low-memory"};
+const std::vector<std::string> kInferenceFlags = {"--spinning", "--low-memory",
+                                                "--per-session-threads"};
 
 // A value that looks like an option is almost always a missing value, as in
 // "--model --text hi". One that really starts with "--" can use "name=value".
@@ -173,7 +181,7 @@ std::string ReadAll(const std::string& path) {
   if (path == "-")
     return {std::istreambuf_iterator<char>(std::cin),
             std::istreambuf_iterator<char>()};
-  std::ifstream file(path, std::ios::binary);
+  std::ifstream file(thespeon::PathFromUtf8(path), std::ios::binary);
   if (!file) throw std::runtime_error("Could not open " + path);
   return {std::istreambuf_iterator<char>(file),
           std::istreambuf_iterator<char>()};
@@ -240,6 +248,7 @@ void SetInferenceOptions(const std::vector<std::string>& args) {
   }
   config.allow_spinning = HasFlag(args, "--spinning");
   config.low_memory = HasFlag(args, "--low-memory");
+  config.use_global_thread_pools = !HasFlag(args, "--per-session-threads");
   thespeon::SetEngineOptions(config);
 }
 
@@ -268,7 +277,7 @@ bool IsInteractive() {
 void PrintReport(const thespeon::RemoveResult& result,
                  const std::filesystem::path& data_directory) {
   std::cout << "Would delete " << result.target << " from "
-            << data_directory.string() << '\n';
+            << thespeon::PathToUtf8(data_directory) << '\n';
   if (result.binaries_removed > 0) {
     std::cout << "  " << result.binaries_removed
               << " file(s) would be removed, " << HumanBytes(result.bytes_freed)
@@ -364,7 +373,7 @@ std::string Identifier(const thespeon::Module& module) {
 int ListModels(const std::filesystem::path& data_directory, bool json) {
   if (!std::filesystem::exists(data_directory))
     throw std::runtime_error(
-        "The data directory " + data_directory.string() +
+        "The data directory " + thespeon::PathToUtf8(data_directory) +
         " does not exist; import a pack with thespeon import "
         "<pack.lingotion>, or pass --data-dir to read another directory");
   const auto catalog = thespeon::Catalog::Load(data_directory);
@@ -373,7 +382,8 @@ int ListModels(const std::filesystem::path& data_directory, bool json) {
     std::cout << thespeon::CatalogJson(catalog) << '\n';
     return status;
   }
-  std::cout << "Data directory: " << data_directory.string() << '\n';
+  std::cout << "Data directory: " << thespeon::PathToUtf8(data_directory)
+            << '\n';
   std::cout << "Character modules (" << catalog.character_modules().size()
             << "):\n";
   for (const auto& module : catalog.character_modules()) {
@@ -436,20 +446,59 @@ int ListEmotions(const std::filesystem::path& data_directory,
   return 0;
 }
 
+// argv is in the ANSI code page on Windows; read the UTF-16 command line so
+// every argument arrives as UTF-8.
+std::vector<std::string> Arguments(int argc, char** argv) {
+#ifdef _WIN32
+  (void)argc;
+  (void)argv;
+  int count = 0;
+  const auto wide = CommandLineToArgvW(GetCommandLineW(), &count);
+  if (wide == nullptr) throw std::runtime_error("Could not read arguments");
+  std::vector<std::string> arguments;
+  for (int i = 1; i < count; ++i)
+    arguments.push_back(thespeon::PathToUtf8(std::filesystem::path(wide[i])));
+  LocalFree(wide);
+  return arguments;
+#else
+  return {argv + 1, argv + argc};
+#endif
+}
+
+// Paths and messages are printed as UTF-8; the console's own code page comes
+// back on exit, since it outlives this process.
+class Utf8Console {
+#ifdef _WIN32
+ public:
+  Utf8Console() : previous_(GetConsoleOutputCP()) {
+    SetConsoleOutputCP(CP_UTF8);
+  }
+  ~Utf8Console() {
+    if (previous_ != 0) SetConsoleOutputCP(previous_);
+  }
+  Utf8Console(const Utf8Console&) = delete;
+  Utf8Console& operator=(const Utf8Console&) = delete;
+
+ private:
+  UINT previous_;
+#endif
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  [[maybe_unused]] const Utf8Console console;
   try {
-    const std::vector<std::string> arguments(argv + 1, argv + argc);
+    const auto arguments = Arguments(argc, argv);
     std::vector<std::string> args;
     std::filesystem::path data_directory;
     for (std::size_t i = 0; i < arguments.size(); ++i) {
       const auto& argument = arguments[i];
       if (argument == "--data-dir") {
         CheckValue(argument, arguments, ++i);
-        data_directory = arguments[i];
+        data_directory = thespeon::PathFromUtf8(arguments[i]);
       } else if (argument.rfind("--data-dir=", 0) == 0) {
-        data_directory = argument.substr(11);
+        data_directory = thespeon::PathFromUtf8(argument.substr(11));
       } else {
         args.push_back(argument);
       }
@@ -460,7 +509,8 @@ int main(int argc, char** argv) {
     if (args[0] == "import") {
       if (args.size() < 2) return Usage();
       for (std::size_t i = 1; i < args.size(); ++i) {
-        const auto result = thespeon::ImportPack(args[i], data_directory);
+        const auto result = thespeon::ImportPack(
+            thespeon::PathFromUtf8(args[i]), data_directory);
         std::cout << "Imported " << args[i] << ": " << result.written
                   << " file(s) written, " << result.unchanged
                   << " unchanged.\n";
@@ -509,7 +559,8 @@ int main(int argc, char** argv) {
       }
       if (output.empty()) output = "out.wav";
       thespeon::Engine(data_directory)
-          .Synthesize(*input, output, InterruptToken());
+          .Synthesize(*input, thespeon::PathFromUtf8(output),
+                      InterruptToken());
       std::cout << "Wrote " << output << '\n';
       return 0;
     }

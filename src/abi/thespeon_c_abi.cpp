@@ -21,6 +21,7 @@
 #include "core/input/thespeon_input.h"
 #include "core/module/catalog.h"
 #include "core/package/importer.h"
+#include "core/utils/utf8_path.h"
 
 namespace {
 
@@ -121,13 +122,7 @@ std::string Utf8Argument(const char* value, const char* name) {
 }
 
 fs::path Utf8Path(const char* value, const char* name) {
-  const auto string = Utf8Argument(value, name);
-#if defined(__cpp_char8_t)
-  return fs::path(std::u8string(
-      reinterpret_cast<const char8_t*>(string.data()), string.size()));
-#else
-  return fs::u8path(string);
-#endif
+  return thespeon::PathFromUtf8(Utf8Argument(value, name));
 }
 
 // Null narrowing narrows nothing, as an omitted CLI option does.
@@ -701,13 +696,15 @@ thespeon_status thespeon_set_inference_options(int32_t thread_count,
                                                uint32_t flags) {
   return Invoke([&] {
     if (thread_count < 0) throw InvalidArgument("thread_count is negative");
-    if ((flags & ~(THESPEON_INFERENCE_SPINNING |
-                   THESPEON_INFERENCE_LOW_MEMORY)) != 0)
+    if ((flags & ~(THESPEON_INFERENCE_SPINNING | THESPEON_INFERENCE_LOW_MEMORY |
+                   THESPEON_INFERENCE_PER_SESSION_THREADS)) != 0)
       throw InvalidArgument("flags has unknown bits");
     thespeon::EngineOptions config;
     config.intra_op_threads = thread_count;
     config.allow_spinning = (flags & THESPEON_INFERENCE_SPINNING) != 0;
     config.low_memory = (flags & THESPEON_INFERENCE_LOW_MEMORY) != 0;
+    config.use_global_thread_pools =
+        (flags & THESPEON_INFERENCE_PER_SESSION_THREADS) == 0;
     thespeon::SetEngineOptions(config);
   });
 }

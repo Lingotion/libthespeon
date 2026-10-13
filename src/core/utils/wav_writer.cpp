@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <system_error>
 
+#include "core/utils/utf8_path.h"
+
 namespace thespeon {
 namespace {
 
@@ -74,7 +76,7 @@ void WriteWav(const std::filesystem::path& path,
     {
       std::ofstream output(partial, std::ios::binary);
       if (!output)
-        throw std::runtime_error("Could not create WAV: " + path.string());
+        throw std::runtime_error("Could not create WAV: " + PathToUtf8(path));
       WritePcm(output, audio);
       output.close();
       if (!output) throw std::runtime_error("Failed while writing WAV");

@@ -291,6 +291,9 @@ typedef struct thespeon_engine thespeon_engine;
 
 #define THESPEON_INFERENCE_SPINNING UINT32_C(1)
 #define THESPEON_INFERENCE_LOW_MEMORY UINT32_C(2)
+/* Gives each loaded model its own thread pool instead of one shared by the
+   whole process, so the thread count grows with the models loaded. */
+#define THESPEON_INFERENCE_PER_SESSION_THREADS UINT32_C(4)
 
 /* Applies to every engine created afterwards and fails while one exists,
    including the one a standalone synthesize call creates. thread_count 0

@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/utils/profile.h"
+#include "core/utils/utf8_path.h"
 
 namespace thespeon {
 namespace {
@@ -42,7 +43,8 @@ std::string JsonString(const json& value, const char* key) {
 json LoadConfig(const std::filesystem::path& path) {
   std::ifstream input(path);
   if (!input)
-    throw std::runtime_error("Could not open module config: " + path.string());
+    throw std::runtime_error("Could not open module config: " +
+                             PathToUtf8(path));
   return json::parse(input);
 }
 
